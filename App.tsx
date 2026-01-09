@@ -1,11 +1,13 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { STUDENT_DATA, ASSESSMENTS } from './constants';
 import { ViewState, StudentInfo } from './types';
 
 const App: React.FC = () => {
   const [view, setView] = useState<ViewState>('home');
   const [consent, setConsent] = useState(false);
+  const [showBackupModal, setShowBackupModal] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [localRegistry, setLocalRegistry] = useState<Record<string, string[]>>(() => {
     const saved = localStorage.getItem('career_student_registry');
@@ -51,6 +53,59 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // --- ระบบ Backup & Restore ---
+  const handleExportData = () => {
+    const data = {
+      registry: localRegistry,
+      results: allResultsStore,
+      exportDate: new Date().toISOString(),
+      version: "1.0"
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `career_backup_${new Date().toLocaleDateString('th-TH').replace(/\//g, '-')}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    alert('สำรองข้อมูลสำเร็จ! กรุณาเก็บไฟล์นี้ไว้เพื่อใช้กู้คืนข้อมูลบนเครื่องอื่น');
+  };
+
+  const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target?.result as string);
+        if (data.registry && data.results) {
+          if (confirm('ตรวจพบข้อมูลสำรอง คุณต้องการนำเข้าข้อมูลนี้ใช่หรือไม่? (ข้อมูลเดิมจะถูกแทนที่ด้วยข้อมูลใหม่)')) {
+            setLocalRegistry(data.registry);
+            setAllResultsStore(data.results);
+            alert('นำเข้าข้อมูลสำเร็จแล้ว!');
+            setShowBackupModal(false);
+          }
+        } else {
+          alert('รูปแบบไฟล์ไม่ถูกต้อง');
+        }
+      } catch (err) {
+        alert('เกิดข้อผิดพลาดในการอ่านไฟล์');
+      }
+    };
+    reader.readAsText(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleClearData = () => {
+    if (confirm('คำเตือน: ข้อมูลทั้งหมดจะถูกลบถาวร คุณแน่ใจหรือไม่?')) {
+      localStorage.clear();
+      window.location.reload();
+    }
+  };
+
+  // --- Logic คำนวณและแปรผล ---
   const getGoalAnalysis = (answers: number[]) => {
     const avg = answers.reduce((sum, ans) => sum + (5 - ans), 0) / answers.length;
     const score = parseFloat(avg.toFixed(2));
@@ -182,8 +237,50 @@ const App: React.FC = () => {
 
   return (
     <div className="max-w-6xl mx-auto py-8 px-4 font-['Sarabun']">
+      {/* Modal สำหรับ Backup & Restore */}
+      {showBackupModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 fade-in">
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-8 text-white text-center">
+               <div className="text-4xl mb-2">☁️</div>
+               <h3 className="text-2xl font-bold">สำรองและกู้คืนข้อมูล</h3>
+               <p className="text-sm opacity-80 mt-1">ใช้สำหรับย้ายข้อมูลไปเครื่องอื่นหรือเบราว์เซอร์อื่น</p>
+            </div>
+            <div className="p-8 space-y-4">
+              <button onClick={handleExportData} className="w-full flex items-center justify-between p-5 bg-indigo-50 hover:bg-indigo-100 rounded-2xl transition-all group">
+                <div className="text-left">
+                  <p className="font-bold text-indigo-900">ส่งออกข้อมูล (Export)</p>
+                  <p className="text-xs text-indigo-600">ดาวน์โหลดไฟล์สำรองเก็บไว้</p>
+                </div>
+                <span className="text-2xl group-hover:translate-x-1 transition-transform">📥</span>
+              </button>
+              
+              <button onClick={() => fileInputRef.current?.click()} className="w-full flex items-center justify-between p-5 bg-purple-50 hover:bg-purple-100 rounded-2xl transition-all group">
+                <div className="text-left">
+                  <p className="font-bold text-purple-900">นำเข้าข้อมูล (Import)</p>
+                  <p className="text-xs text-purple-600">กู้คืนข้อมูลจากไฟล์ที่เคยสำรองไว้</p>
+                </div>
+                <span className="text-2xl group-hover:translate-x-1 transition-transform">📤</span>
+              </button>
+              <input type="file" ref={fileInputRef} onChange={handleImportData} accept=".json" className="hidden" />
+
+              <div className="pt-4 border-t border-gray-100">
+                <button onClick={handleClearData} className="w-full p-4 text-rose-500 font-bold hover:bg-rose-50 rounded-2xl transition-all">
+                  ❌ ล้างข้อมูลทั้งหมดในเครื่องนี้
+                </button>
+              </div>
+            </div>
+            <button onClick={() => setShowBackupModal(false)} className="w-full bg-slate-900 text-white p-5 font-bold uppercase tracking-widest hover:bg-black transition-all">ปิดหน้าต่าง</button>
+          </div>
+        </div>
+      )}
+
       {view === 'home' && (
-        <div className="bg-white rounded-3xl shadow-2xl p-8 md:p-12 text-center fade-in">
+        <div className="bg-white rounded-3xl shadow-2xl p-8 md:p-12 text-center fade-in relative overflow-hidden">
+          <button onClick={() => setShowBackupModal(true)} className="absolute top-6 right-6 p-3 bg-slate-50 hover:bg-slate-100 rounded-2xl border border-slate-200 text-slate-400 hover:text-indigo-600 transition-all group no-print">
+            <span className="block text-2xl group-hover:rotate-12 transition-transform">⚙️</span>
+          </button>
+
           <div className="text-6xl mb-4">🎓</div>
           <h1 className="text-4xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 mb-2 tracking-tight">ระบบประเมินและแนะแนวอาชีพ</h1>
           <p className="text-xl font-bold text-slate-700 mb-2">สำหรับนักเรียนชั้นมัธยมศึกษาปีที่ 5 โรงเรียนหารเทารังสีประชาสรรค์</p>
@@ -196,9 +293,9 @@ const App: React.FC = () => {
               <p className="text-sm text-blue-700">ประเมินตนเอง, พหุปัญญา, EQ, RIASEC และความพร้อมทางอาชีพ</p>
             </div>
             <div className="bg-purple-50 p-6 rounded-2xl border border-purple-100 shadow-sm">
-              <div className="text-3xl mb-3">🎯</div>
-              <h3 className="font-bold text-lg text-purple-900 mb-2">บันทึกข้อมูลส่วนตัว</h3>
-              <p className="text-sm text-purple-700">ข้อมูลจะถูกเก็บไว้อย่างปลอดภัยในเบราว์เซอร์นี้</p>
+              <div className="text-3xl mb-3">📂</div>
+              <h3 className="font-bold text-lg text-purple-900 mb-2">ระบบย้ายข้อมูล</h3>
+              <p className="text-sm text-purple-700">สำรองไฟล์ข้อมูลเพื่อนำไปใช้ต่อในมือถือหรือเครื่องอื่นๆ ได้</p>
             </div>
           </div>
           <div className="space-y-6">
@@ -266,7 +363,10 @@ const App: React.FC = () => {
                <h2 className="text-3xl font-bold text-gray-800 tracking-tight">เลือกแบบประเมิน</h2>
                <p className="text-gray-500 mt-1 font-medium">ยินดีต้อนรับ: <span className="text-indigo-600 font-bold">{studentInfo.name}</span> (ชั้น ม.{studentInfo.class})</p>
             </div>
-            <div className="text-right no-print">
+            <div className="flex items-center gap-3 no-print">
+               <button onClick={() => setShowBackupModal(true)} className="text-xs text-indigo-600 font-black border-2 border-indigo-50 px-4 py-2 rounded-xl hover:bg-indigo-50 transition-colors uppercase tracking-widest flex items-center gap-2"> 
+                ☁️ สำรองข้อมูล
+               </button>
                <button onClick={() => { localStorage.removeItem('career_last_user'); setStudentInfo({name:'', class:''}); setView('home'); }} className="text-xs text-rose-500 font-bold border-2 border-rose-100 px-4 py-2 rounded-xl hover:bg-rose-50 transition-colors uppercase tracking-widest">LOGOUT</button>
             </div>
           </div>
@@ -499,14 +599,3 @@ const App: React.FC = () => {
               </section>
             )}
           </div>
-          <div className="mt-24 pt-10 border-t flex flex-col md:flex-row gap-5 no-print">
-            <button onClick={() => setView('select')} className="flex-1 py-6 bg-indigo-600 text-white rounded-3xl font-black text-xl hover:shadow-2xl hover:-translate-y-1 transition-all uppercase tracking-widest shadow-lg">ทำข้อสอบที่เหลือ</button>
-            <button onClick={() => { localStorage.removeItem('career_last_user'); setView('home'); }} className="flex-1 py-6 bg-slate-100 text-slate-600 rounded-3xl font-black text-xl hover:bg-slate-200 transition-all uppercase tracking-widest">ออกจากระบบ</button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default App;
