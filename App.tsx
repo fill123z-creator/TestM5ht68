@@ -599,3 +599,14 @@ const App: React.FC = () => {
               </section>
             )}
           </div>
+          <div className="mt-24 pt-10 border-t flex flex-col md:flex-row gap-5 no-print">
+            <button onClick={() => setView('select')} className="flex-1 py-6 bg-indigo-600 text-white rounded-3xl font-black text-xl hover:shadow-2xl hover:-translate-y-1 transition-all uppercase tracking-widest shadow-lg">ทำข้อสอบที่เหลือ</button>
+            <button onClick={() => { localStorage.removeItem('career_last_user'); setView('home'); }} className="flex-1 py-6 bg-slate-100 text-slate-600 rounded-3xl font-black text-xl hover:bg-slate-200 transition-all uppercase tracking-widest">ออกจากระบบ</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default App;
